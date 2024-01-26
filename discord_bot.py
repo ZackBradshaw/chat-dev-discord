@@ -1,75 +1,66 @@
-from discord_slash import SlashCommand
-from discord_slash.utils.manage_commands import create_option
-from discord.ext import commands
 import os
+from discord import app_commands, Intents
+from discord.ext import commands
 from dotenv import load_dotenv
-from chatdev.chat_chain import ChatChain
-from camel.typing import ModelType
+from ChatDev.chatdev.chat_chain import ChatChain
+from ChatDev.camel.typing import ModelType
 
 # Load environment variables
 load_dotenv()
 
 # Bot setup
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
-slash = SlashCommand(bot, sync_commands=True)
+intents = Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Register an instance of the Tree with the bot
+tree = app_commands.CommandTree(bot)
+
+# Helper function to get configuration paths
+def get_config(company):
+    """
+    return configuration json files for ChatChain
+    user can customize only parts of configuration json files, other files will be left for default
+    Args:
+        company: customized configuration name under CompanyConfig/
+
+    Returns:
+        path to three configuration jsons: [config_path, config_phase_path, config_role_path]
+    """
+    config_dir = os.path.join("CompanyConfig", company)
+    default_config_dir = os.path.join("CompanyConfig", "Default")
+
+    config_files = [
+        "ChatChainConfig.json",
+        "PhaseConfig.json",
+        "RoleConfig.json"
+    ]
+
+    config_paths = []
+
+    for config_file in config_files:
+        company_config_path = os.path.join(config_dir, config_file)
+        default_config_path = os.path.join(default_config_dir, config_file)
+
+        if os.path.exists(company_config_path):
+            config_paths.append(company_config_path)
+        else:
+            config_paths.append(default_config_path)
+
+    return tuple(config_paths)
 
 # Slash command for ChatDev functionality with environment variables
-@slash.slash(
-    name="ChatDevFunction",
-    description="Run your ChatDev function with custom environment variables",
-    options=[
-        create_option(
-            name="config",
-            description="Name of config, which is used to load configuration under CompanyConfig/",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="org",
-            description="Name of organization, your software will be generated in WareHouse/name_org_timestamp",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="task",
-            description="Prompt of software",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="name",
-            description="Name of software, your software will be generated in WareHouse/name_org_timestamp",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="model",
-            description="GPT Model, choose from {'GPT_3_5_TURBO','GPT_4','GPT_4_32K', 'GPT_4_TURBO'}",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="path",
-            description="Your file directory, ChatDev will build upon your software in the Incremental mode",
-            option_type=3,  # Type 3 is string
-            required=True
-        ),
-        create_option(
-            name="env_vars",
-            description="Environment variables to set for the initial run, in the format KEY=VALUE separated by commas",
-            option_type=3,  # Type 3 is string
-            required=False
-        ),
-        create_option(
-            name="run_args",
-            description="Arguments to pass to the software upon initial run, separated by spaces",
-            option_type=3,  # Type 3 is string
-            required=False
-        ),
-        # Add more options as needed for your inputs
-    ]
+@tree.command(name="chatdev", description="Run your ChatDev function with custom environment variables")
+@app_commands.describe(
+    config="Name of config, which is used to load configuration under CompanyConfig/",
+    org="Name of organization, your software will be generated in WareHouse/name_org_timestamp",
+    task="Prompt of software",
+    name="Name of software, your software will be generated in WareHouse/name_org_timestamp",
+    model="GPT Model, choose from {'GPT_3_5_TURBO','GPT_4','GPT_4_32K', 'GPT_4_TURBO'}",
+    path="Your file directory, ChatDev will build upon your software in the Incremental mode",
+    env_vars="Environment variables to set for the initial run, in the format KEY=VALUE separated by commas",
+    run_args="Arguments to pass to the software upon initial run, separated by spaces"
 )
-async def _chat_dev_function(ctx, config, org, task, name, model, path, env_vars=None, run_args=None):
+async def chat_dev_function(interaction: discord.Interaction, config: str, org: str, task: str, name: str, model: str, path: str, env_vars: str = None, run_args: str = None):
     # Parse environment variables
     env_dict = {}
     if env_vars:
@@ -80,16 +71,21 @@ async def _chat_dev_function(ctx, config, org, task, name, model, path, env_vars
     # Parse run arguments
     run_arguments = run_args.split(' ') if run_args else []
 
-    # Call your ChatDev functionality with the provided inputs
+    # Get configuration paths
+    config_path, config_phase_path, config_role_path = get_config(config)
+
+    # Map model names to ModelType
     args2type = {'GPT_3_5_TURBO': ModelType.GPT_3_5_TURBO,
                  'GPT_4': ModelType.GPT_4,
                  'GPT_4_32K': ModelType.GPT_4_32k,
                  'GPT_4_TURBO': ModelType.GPT_4_TURBO,
                  'GPT_4_TURBO_V': ModelType.GPT_4_TURBO_V
                  }
-    chat_chain = ChatChain(config_path=config,
-                           config_phase_path=config,
-                           config_role_path=config,
+
+    # Create ChatChain instance
+    chat_chain = ChatChain(config_path=config_path,
+                           config_phase_path=config_phase_path,
+                           config_role_path=config_role_path,
                            task_prompt=task,
                            project_name=name,
                            org_name=org,
@@ -97,13 +93,20 @@ async def _chat_dev_function(ctx, config, org, task, name, model, path, env_vars
                            code_path=path,
                            env_vars=env_dict,
                            run_args=run_arguments)
+
     # Execute the chat chain and capture the output
     output_messages = chat_chain.execute_chain_capture_output()
+
     # Send the result back to the Discord channel
-    await ctx.send(f"ChatDev execution completed with environment variables: {env_vars} and run arguments: {run_args}")
+    await interaction.response.send_message(f"ChatDev execution completed with environment variables: {env_vars} and run arguments: {run_args}")
+
     # Send the output messages from the chat chain execution
     for message in output_messages:
-        await ctx.send(message)
+        await interaction.followup.send(message)
+
+# Sync the command tree to ensure the commands are registered
+bot.tree.sync()
 
 # Run the bot
 bot.run(os.getenv('DISCORD_TOKEN'))
+
