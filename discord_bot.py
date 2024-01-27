@@ -1,8 +1,8 @@
 import os
 import discord
 from dotenv import load_dotenv
-from chatdev.chat_chain import ChatChain
-from camel.typing import ModelType
+from ChatDev.chatdev.chat_chain import ChatChain
+from ChatDev.camel.typing import ModelType
 
 # Load environment variables
 load_dotenv()
