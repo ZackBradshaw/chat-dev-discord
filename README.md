@@ -1,6 +1,6 @@
  # ChatDev Discord Bot
 
- ![ChatDev Banner](path_to_banner_image)
+ ![Banner](banner.png)
 
  This is a discord bot designed to make chatdev easily interactable through Discord. This bot allows users to quickly scaffold out their ideas, provide feedback, and find help from the community to flesh out their concepts. be part of this [OpenSourcerer Community](https://discord.gg/WXV4vF7cza).
 
